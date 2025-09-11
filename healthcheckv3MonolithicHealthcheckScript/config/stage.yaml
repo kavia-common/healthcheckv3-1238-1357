@@ -1,0 +1,37 @@
+environment: stage
+logging:
+  level: INFO
+  file: /tmp/du_healthcheck_stage.log
+kubernetes:
+  site_label_key: siteId
+pods:
+  pod1:
+    label_selector: "app=pod1"
+    required_containers: ["du-core", "du-aux"]
+  pod2:
+    label_selector: "app=pod2"
+    required_containers: ["du-rt", "du-mon"]
+ignore_containers:
+  pod1: []
+  pod2: []
+thresholds:
+  cpu_max: 1200
+  memory_max: 1536
+  disk_max: 80
+  rach_degraded: 500
+  rach_degrading_min: 500
+  rach_healthy_min: 1000
+kafka:
+  brokers: ["stage-broker:9092"]
+  topic: "du-health"
+  tls_enabled: false
+  ca_path:
+  username:
+  password:
+loki:
+  endpoint: "http://stage-loki:3100/loki/api/v1/push"
+  tenant_id:
+log_paths:
+  sctp: "/var/log/du/sctp.log"
+  rach: "/var/log/du/rach.log"
+  pucch: "/var/log/du/pucch.log"
