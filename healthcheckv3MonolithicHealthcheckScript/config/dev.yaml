@@ -15,9 +15,9 @@ ignore_containers:
   pod1: []
   pod2: []
 thresholds:
-  cpu_max: 1500    # in millicores (m)
-  memory_max: 2048 # in Mi
-  disk_max: 85     # percent
+  cpu_max: 1500
+  memory_max: 2048
+  disk_max: 85
   rach_degraded: 500
   rach_degrading_min: 500
   rach_healthy_min: 1000
