@@ -2,15 +2,22 @@
 """
 DU Site Health Check Script (Standalone, production-grade)
 
-This module exposes two PUBLIC_INTERFACE functions:
-- load_config(env_name): Load validated YAML configuration and configure logging.
-- run_healthcheck(site_id, cluster_id, env_name): Execute the full healthcheck and return a report dict.
+This file provides a standalone, production-ready healthcheck with a clear main() entry
+point and modularized concerns:
+- Configuration/logging setup
+- Vault/secret management
+- Kubernetes interaction
+- Pod/container checks
+- Metrics and log parsing
+- Health aggregation/reporting
+- Kafka and Loki publishing
+- Core orchestration
 
-Key characteristics:
-- ≤400 lines, modular sections, short cohesive helpers.
-- YAML-driven config; structured logging with operation_id.
-- No prints, no CLI, no API. To be called from a wrapper (e.g., Airflow DAG).
-- Secure secret handling; kubeconfig never logged; external I/O wrapped.
+Notes:
+- No CLI parsing or printing; intended to be invoked programmatically (e.g., Airflow DAG).
+- Configuration loaded from YAML under ./config (dev.yaml, stage.yaml, prod.yaml).
+- Logging configured from YAML (level and file path).
+- No secrets are logged.
 """
 
 from __future__ import annotations
@@ -392,7 +399,7 @@ def _pod_running(pod: Dict[str, Any]) -> bool:
 def _containers_ok(pod: Dict[str, Any], required: List[str], ignore: List[str]) -> bool:
     """Verify required containers are running; ignore those in ignore list."""
     statuses = pod.get("status", {}).get("containerStatuses", []) or []
-    running = {st.get("name"): bool(st.get("ready", False) and st.get("started", st.get("ready", False))) for st in statuses}
+    running = {st.get("name"): bool(st.get("ready", False)) for st in statuses}
     needed = [c for c in required if c not in ignore]
     return all(running.get(c, False) for c in needed)
 
@@ -634,7 +641,7 @@ class LokiClient:
                 "values": [[str(int(time.time() * 1e9)), message]],
             }]
         }
-        headers = {}
+        headers: Dict[str, str] = {}
         if self._cfg.tenant_id:
             headers["X-Scope-OrgID"] = self._cfg.tenant_id
         try:
@@ -782,3 +789,43 @@ def run_healthcheck(site_id: str, cluster_id: str, env_name: str = "dev") -> Dic
 
     logger.info("Healthcheck complete status=%s", overall, extra={"operation_id": operation_id})
     return report
+
+
+def main() -> None:
+    """
+    Entrypoint for standalone execution.
+
+    This function demonstrates a minimal orchestration call. In production,
+    callers should import and invoke run_healthcheck(site_id, cluster_id, env)
+    directly. Here we extract site/cluster/env from environment variables
+    to avoid CLI parsing as per requirements.
+
+    Required environment variables:
+    - HC_SITE_ID
+    - HC_CLUSTER_ID
+    - APP_ENV (optional, defaults to 'dev')
+    """
+    logger = logging.getLogger("HealthCheckMain")
+    env = os.environ.get("APP_ENV", "dev")
+    # Configure logging early to ensure subsequent logs are captured.
+    try:
+        _configure_logging_from_yaml(env)
+    except Exception:
+        # Minimal fallback logging to console if YAML missing at this early stage.
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+
+    site_id = os.environ.get("HC_SITE_ID")
+    cluster_id = os.environ.get("HC_CLUSTER_ID")
+    if not site_id or not cluster_id:
+        logger.error("Missing HC_SITE_ID or HC_CLUSTER_ID in environment", extra={"operation_id": "-"})
+        return
+
+    try:
+        run_healthcheck(site_id=site_id, cluster_id=cluster_id, env_name=env)
+    except Exception:
+        logger.exception("Healthcheck failed", extra={"operation_id": "-"})
+
+
+
+if __name__ == "__main__":
+    main()
