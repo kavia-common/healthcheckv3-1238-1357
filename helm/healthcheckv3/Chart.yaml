@@ -1,0 +1,19 @@
+apiVersion: v2
+name: healthcheckv3
+description: Helm chart for deploying the healthcheckv3 Monolithic Healthcheck Script as a standalone Kubernetes application
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.23.0-0"
+home: https://example.com/healthcheckv3
+maintainers:
+  - name: platform-team
+    email: platform@example.com
+keywords:
+  - healthcheck
+  - kubernetes
+  - du
+  - monitoring
+annotations:
+  category: monitoring
+  artifacthub.io/prerelease: "true"

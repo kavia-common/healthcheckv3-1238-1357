@@ -1,0 +1,45 @@
+{{- if .Values.config.create }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ default (include "healthcheckv3.fullname" .) .Values.config.nameOverride }}-{{ .Values.app.environment }}
+  labels:
+    app.kubernetes.io/name: {{ include "healthcheckv3.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  {{ .Values.app.environment }}.yaml: |
+{{- if eq .Values.app.environment "dev" }}
+{{ .Values.config.dev | indent 4 }}
+{{- else if eq .Values.app.environment "stage" }}
+{{ .Values.config.stage | indent 4 }}
+{{- else if eq .Values.app.environment "prod" }}
+{{ .Values.config.prod | indent 4 }}
+{{- else }}
+    environment: {{ .Values.app.environment }}
+    logging:
+      level: INFO
+      file: /tmp/du_healthcheck.log
+    kubernetes:
+      site_label_key: siteId
+    pods: {}
+    ignore_containers: {}
+    thresholds:
+      cpu_max: 1500
+      memory_max: 2048
+      disk_max: 85
+      rach_degraded: 500
+      rach_degrading_min: 500
+      rach_healthy_min: 1000
+    kafka:
+      brokers: []
+      topic: "du-health"
+      tls_enabled: false
+    loki:
+      endpoint: ""
+      tenant_id:
+    log_paths:
+      sctp: "/var/log/du/sctp.log"
+      rach: "/var/log/du/rach.log"
+      pucch: "/var/log/du/pucch.log"
+{{- end }}
+{{- end }}

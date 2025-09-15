@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "healthcheckv3.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "healthcheckv3.name" . }}
+    helm.sh/chart: {{ include "healthcheckv3.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "healthcheckv3.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "healthcheckv3.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        checksum/configmap: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- if .Values.image.pullSecrets }}
+      imagePullSecrets:
+      {{- toYaml .Values.image.pullSecrets | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "healthcheckv3.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: healthcheckv3
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: APP_ENV
+              value: "{{ .Values.app.environment }}"
+            - name: HC_SITE_ID
+              value: "{{ .Values.app.siteId }}"
+            - name: HC_CLUSTER_ID
+              value: "{{ .Values.app.clusterId }}"
+            {{- range .Values.app.extraEnv }}
+            - name: {{ .name | quote }}
+              value: {{ .value | quote }}
+            {{- end }}
+            # Map all secret keys as env variables
+            {{- if and .Values.secrets.create .Values.secrets.data }}
+            {{- $secretName := default (include "healthcheckv3.fullname" .) .Values.secrets.nameOverride }}
+            {{- range $k, $_ := .Values.secrets.data }}
+            - name: {{ $k }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $k }}
+            {{- end }}
+            {{- end }}
+          {{- if .Values.app.args }}
+          args:
+          {{- range .Values.app.args }}
+            - {{ . | quote }}
+          {{- end }}
+          {{- end }}
+          # Probes (since it's not network serving, use a lightweight exec)
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "python -V >/dev/null 2>&1 || exit 1"]
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+            successThreshold: {{ .Values.probes.liveness.successThreshold }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "test -n \"$APP_ENV\" -a -n \"$HC_SITE_ID\" -a -n \"$HC_CLUSTER_ID\""]
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+            successThreshold: {{ .Values.probes.readiness.successThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.config.create }}
+            - name: hc-config
+              mountPath: /app/healthcheckv3MonolithicHealthcheckScript/config
+            {{- end }}
+            {{- if .Values.secretMount.enabled }}
+            - name: hc-secret
+              mountPath: {{ .Values.secretMount.mountPath }}
+              readOnly: true
+            {{- end }}
+            {{- if .Values.persistence.enabled }}
+            - name: logs
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- end }}
+      volumes:
+        {{- if .Values.config.create }}
+        - name: hc-config
+          projected:
+            sources:
+              - configMap:
+                  name: {{ default (include "healthcheckv3.fullname" .) .Values.config.nameOverride }}-{{ .Values.app.environment }}
+                  items:
+                    - key: {{ .Values.app.environment }}.yaml
+                      path: {{ .Values.app.environment }}.yaml
+        {{- end }}
+        {{- if .Values.secretMount.enabled }}
+        - name: hc-secret
+          secret:
+            secretName: {{ default (include "healthcheckv3.fullname" .) .Values.secrets.nameOverride }}
+            defaultMode: {{ .Values.secretMount.defaultMode }}
+        {{- end }}
+        {{- if .Values.persistence.enabled }}
+        - name: logs
+          {{- if .Values.persistence.existingClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}

@@ -1,0 +1,229 @@
+# Environment for the application (dev|stage|prod)
+app:
+  environment: dev
+  # Required runtime identifiers (can be set via values or during install with --set or --set-file)
+  siteId: ""            # e.g., site-001
+  clusterId: ""         # e.g., cluster-a
+  # Extra environment variables (non-secret)
+  extraEnv: []
+  # Optional args if your container honors args; by default we rely on env vars only
+  args: []
+
+image:
+  repository: ghcr.io/your-org/healthcheckv3
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+  pullSecrets: [] # e.g., [{ name: regcred }]
+
+replicaCount: 1
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+rbac:
+  create: false
+
+podAnnotations: {}
+
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  limits:
+    cpu: 250m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Optional service: not required since this is not a request-serving app
+service:
+  enabled: false
+  type: ClusterIP
+  port: 8080
+
+# Liveness/readiness probes: simple exec check that python is present (or a tiny sleep-based script)
+probes:
+  liveness:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  readiness:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+
+# ConfigMap with application YAML configs (dev/stage/prod)
+config:
+  create: true
+  nameOverride: ""
+  # Optional override of YAML for environments. If left empty, uses bundled defaults from repo (mount optional).
+  dev: |
+    environment: dev
+    logging:
+      level: INFO
+      file: /tmp/du_healthcheck_dev.log
+    kubernetes:
+      site_label_key: siteId
+    pods:
+      pod1:
+        label_selector: "app=pod1"
+        required_containers: ["du-core", "du-aux"]
+      pod2:
+        label_selector: "app=pod2"
+        required_containers: ["du-rt", "du-mon"]
+    ignore_containers:
+      pod1: []
+      pod2: []
+    thresholds:
+      cpu_max: 1500
+      memory_max: 2048
+      disk_max: 85
+      rach_degraded: 500
+      rach_degrading_min: 500
+      rach_healthy_min: 1000
+    kafka:
+      brokers: ["localhost:9092"]
+      topic: "du-health"
+      tls_enabled: false
+      ca_path:
+      username:
+      password:
+    loki:
+      endpoint: "http://localhost:3100/loki/api/v1/push"
+      tenant_id:
+    log_paths:
+      sctp: "/var/log/du/sctp.log"
+      rach: "/var/log/du/rach.log"
+      pucch: "/var/log/du/pucch.log"
+  stage: |
+    environment: stage
+    logging:
+      level: INFO
+      file: /tmp/du_healthcheck_stage.log
+    kubernetes:
+      site_label_key: siteId
+    pods:
+      pod1:
+        label_selector: "app=pod1"
+        required_containers: ["du-core", "du-aux"]
+      pod2:
+        label_selector: "app=pod2"
+        required_containers: ["du-rt", "du-mon"]
+    ignore_containers:
+      pod1: []
+      pod2: []
+    thresholds:
+      cpu_max: 1200
+      memory_max: 1536
+      disk_max: 80
+      rach_degraded: 500
+      rach_degrading_min: 500
+      rach_healthy_min: 1000
+    kafka:
+      brokers: ["stage-broker:9092"]
+      topic: "du-health"
+      tls_enabled: false
+      ca_path:
+      username:
+      password:
+    loki:
+      endpoint: "http://stage-loki:3100/loki/api/v1/push"
+      tenant_id:
+    log_paths:
+      sctp: "/var/log/du/sctp.log"
+      rach: "/var/log/du/rach.log"
+      pucch: "/var/log/du/pucch.log"
+  prod: |
+    environment: prod
+    logging:
+      level: WARNING
+      file: /var/log/du_healthcheck_prod.log
+    kubernetes:
+      site_label_key: siteId
+    pods:
+      pod1:
+        label_selector: "app=pod1"
+        required_containers: ["du-core", "du-aux"]
+      pod2:
+        label_selector: "app=pod2"
+        required_containers: ["du-rt", "du-mon"]
+    ignore_containers:
+      pod1: []
+      pod2: []
+    thresholds:
+      cpu_max: 1000
+      memory_max: 1024
+      disk_max: 75
+      rach_degraded: 500
+      rach_degrading_min: 500
+      rach_healthy_min: 1000
+    kafka:
+      brokers: ["broker1:9093","broker2:9093"]
+      topic: "du-health"
+      tls_enabled: true
+      ca_path: "/etc/ssl/certs/ca-bundle.crt"
+      username:
+      password:
+    loki:
+      endpoint: "https://loki.prod.company/loki/api/v1/push"
+      tenant_id: "du-observability"
+    log_paths:
+      sctp: "/var/log/du/sctp.log"
+      rach: "/var/log/du/rach.log"
+      pucch: "/var/log/du/pucch.log"
+
+# Secret management
+secrets:
+  create: false
+  nameOverride: ""
+  # Key-value pairs for env vars to inject from secret (set via --set-string or --set-file)
+  # Example:
+  # data:
+  #   KUBECONFIG_clusterA: |-
+  #     <base64 or literal file content injected via --set-file secrets.data.KUBECONFIG_clusterA=path>
+  data: {}
+
+# Optional mounting of Secret volume (for files such as CA certs or kubeconfig if needed as filesystem file)
+secretMount:
+  enabled: false
+  name: ""         # uses secrets.nameOverride if empty
+  mountPath: /opt/healthcheck/secret
+  defaultMode: 0440
+
+# Optional mounting of a PVC for writing logs (if the app writes to disk)
+persistence:
+  enabled: false
+  existingClaim: ""
+  size: 1Gi
+  storageClassName: ""
+  accessModes: ["ReadWriteOnce"]
+  mountPath: /var/log
+
+# Schedule: If you later want to run as CronJob, you can wrap this chart or set this as future extension
+cronjob:
+  enabled: false
+  schedule: "*/15 * * * *"
